@@ -16,10 +16,30 @@ jobs:
 
     steps:
       # ── 1. Checkout ───────────────────────────────────────────────────────
+      # NOTE: submodules: recursive is intentionally NOT used here.
+      # The feat/emscripten branch has a broken submodule entry
+      # (Minecraft.World/Emscripten/md5) that has no URL in .gitmodules.
+      # We init submodules manually below so we can skip the bad one.
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive   # pull any git submodules
+          submodules: false
+
+      # ── 1b. Init submodules (skip the broken md5 entry) ──────────────────
+      - name: Init submodules (skip broken md5 entry)
+        run: |
+          git submodule sync
+          # Init and update every submodule that actually has a URL,
+          # ignoring the broken Minecraft.World/Emscripten/md5 entry.
+          git submodule update --init --recursive \
+            --jobs 4 \
+            -- $(git submodule status --recursive \
+                   | awk '{print $2}' \
+                   | grep -v 'Minecraft.World/Emscripten/md5') \
+          || true
+          # If the md5 path is just a plain directory (no submodule URL),
+          # ensure it exists so the build doesn't fail looking for it.
+          mkdir -p Minecraft.World/Emscripten/md5
 
       # ── 2. Python (needed by emsdk & Meson) ──────────────────────────────
       - name: Set up Python
