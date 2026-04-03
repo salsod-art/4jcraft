@@ -1,132 +1,59 @@
-name: Build (Emscripten / WebAssembly)
-
-on:
-  push:
-    branches:
-      - feat/emscripten
-  pull_request:
-    branches:
-      - feat/emscripten
-  workflow_dispatch: # lets you trigger it manually from the Actions tab
-
-jobs:
-  build-wasm:
-    name: Meson + Emscripten → WASM
-    runs-on: ubuntu-24.04
-
-    steps:
-      # ── 1. Checkout ───────────────────────────────────────────────────────
-      # NOTE: submodules: recursive is intentionally NOT used here.
-      # The feat/emscripten branch has a broken submodule entry
-      # (Minecraft.World/Emscripten/md5) that has no URL in .gitmodules.
-      # We init submodules manually below so we can skip the bad one.
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: false
-
-      # ── 1b. Init submodules (skip the broken md5 entry) ──────────────────
-      - name: Init submodules (skip broken md5 entry)
-        run: |
-          git submodule sync
-          # Init and update every submodule that actually has a URL,
-          # ignoring the broken Minecraft.World/Emscripten/md5 entry.
-          git submodule update --init --recursive \
-            --jobs 4 \
-            -- $(git submodule status --recursive \
-                   | awk '{print $2}' \
-                   | grep -v 'Minecraft.World/Emscripten/md5') \
-          || true
-          # If the md5 path is just a plain directory (no submodule URL),
-          # ensure it exists so the build doesn't fail looking for it.
-          mkdir -p Minecraft.World/Emscripten/md5
-
-      # ── 2. Python (needed by emsdk & Meson) ──────────────────────────────
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      # ── 3. Install Meson & Ninja ──────────────────────────────────────────
-      - name: Install Meson and Ninja
-        run: pip install meson ninja
-
-      # ── 4. Install & activate Emscripten SDK ─────────────────────────────
-      # Uses the official setup-emsdk action which correctly sets EMSDK,
-      # EM_CONFIG, BINARYEN_ROOT, and PATH for all subsequent steps.
-      # It also handles caching automatically.
-      - name: Set up Emscripten SDK
-        uses: mymindstorm/setup-emsdk@v14
-        with:
-          version: latest
-          actions-cache-folder: .emsdk-cache
-
-      # ── 5. Verify toolchain ───────────────────────────────────────────────
-      - name: Verify emcc
-        run: emcc --version
-
-      # ── 6. Write Meson Emscripten cross-file ─────────────────────────────
-      #
-      #  If your branch already ships a cross file (e.g. scripts/emscripten.ini
-      #  or cross/wasm.txt), change --cross-file below to point at that file
-      #  instead of the one generated here.
-      #
-      - name: Write Meson cross-file for Emscripten
-        run: |
-          python3 - << 'PYEOF'
-          lines = [
-            "[binaries]",
-            "c       = 'emcc'",
-            "cpp     = 'em++'",
-            "ar      = 'emar'",
-            "ranlib  = 'emranlib'",
-            "nm      = 'emnm'",
-            "strip   = 'emstrip'",
-            "pkgconfig = 'pkg-config'",
-            "",
-            "[built-in options]",
-            "c_args      = ['-O2']",
-            "cpp_args    = ['-O2', '-std=c++17']",
-            "c_link_args = ['-sALLOW_MEMORY_GROWTH=1', '-sINITIAL_MEMORY=67108864', '-sUSE_SDL=2', '-sUSE_WEBGL2=1', '-O2']",
-            "cpp_link_args = ['-sALLOW_MEMORY_GROWTH=1', '-sINITIAL_MEMORY=67108864', '-sUSE_SDL=2', '-sUSE_WEBGL2=1', '-O2']",
-            "",
-            "[properties]",
-            "needs_exe_wrapper = true",
-            "",
-            "[host_machine]",
-            "system     = 'emscripten'",
-            "cpu_family = 'wasm32'",
-            "cpu        = 'wasm32'",
-            "endian     = 'little'",
-          ]
-          with open('emscripten.ini', 'w') as f:
-            f.write('\n'.join(lines) + '\n')
-          PYEOF
-
-      # ── 7. Install GLM (header-only, must be visible to emcc) ────────────
-      - name: Install GLM
-        run: sudo apt-get install -y libglm-dev
-
-      # ── 8. Configure (meson setup) ────────────────────────────────────────
-      - name: Configure with Meson
-        run: |
-          meson setup build \
-            --cross-file emscripten.ini \
-            --buildtype release
-
-      # ── 8. Compile ────────────────────────────────────────────────────────
-      - name: Compile
-        run: meson compile -C build -j$(nproc)
-
-      # ── 9. Upload build artefacts ────────────────────────────────────────
-      - name: Upload WASM build artefacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: 4jcraft-wasm
-          # Adjust the glob below if the output lives in a different sub-folder
-          path: |
-            build/**/*.js
-            build/**/*.wasm
-            build/**/*.html
-          retention-days: 30
-          if-no-files-found: warn
+Run meson compile -C build -j$(nproc)
+  
+ninja: Entering directory `/home/runner/work/4jcraft/4jcraft/build'
+[1/185] Generating subprojects/shiggy/unpack-archive with a custom command
+[2/185] Generating Minecraft.Assets/Minecraft.Assets_Localisation with a custom command
+Processed 1885 strings from /home/runner/work/4jcraft/4jcraft/Minecraft.Assets/Windows64Media/loc/ja-JP/strings.lang
+Processed 1885 strings from /home/runner/work/4jcraft/4jcraft/Minecraft.Assets/Windows64Media/loc/pt-BR/strings.lang
+Processed 2268 strings from /home/runner/work/4jcraft/4jcraft/Minecraft.Assets/Windows64Media/loc/en-EN/strings.lang
+Processed 1885 strings from /home/runner/work/4jcraft/4jcraft/Minecraft.Assets/Windows64Media/loc/zh-CHT/strings.lang
+Processed 1885 strings from /home/runner/work/4jcraft/4jcraft/Minecraft.Assets/Windows64Media/loc/es-ES/strings.lang
+Processed 1885 strings from /home/runner/work/4jcraft/4jcraft/Minecraft.Assets/Windows64Media/loc/fr-FR/strings.lang
+Processed 1885 strings from /home/runner/work/4jcraft/4jcraft/Minecraft.Assets/Windows64Media/loc/ko-KR/strings.lang
+Processed 1885 strings from /home/runner/work/4jcraft/4jcraft/Minecraft.Assets/Windows64Media/loc/de-DE/strings.lang
+Processed 1885 strings from /home/runner/work/4jcraft/4jcraft/Minecraft.Assets/Windows64Media/loc/it-IT/strings.lang
+Processed 9 languages
+Wrote 1325173 bytes to Minecraft.Assets/languages.loc
+Generated Minecraft.Assets/strings.h with 2268 defines
+[3/185] Generating subprojects/simdutf/amalgamate with a custom command
+SCRIPTPATH=/home/runner/work/4jcraft/4jcraft/subprojects/simdutf/singleheader PROJECTPATH=/home/runner/work/4jcraft/4jcraft/subprojects/simdutf
+We are about to amalgamate all simdutf files into one source file.
+See https://www.sqlite.org/amalgamation.html and https://en.wikipedia.org/wiki/Single_Compilation_Unit for rationale.
+timestamp is 2026-03-12 20:46:37 -0400
+Creating /home/runner/work/4jcraft/4jcraft/build/subprojects/simdutf/simdutf.h
+Creating /home/runner/work/4jcraft/4jcraft/build/subprojects/simdutf/simdutf.cpp
+Copying additional files to /home/runner/work/4jcraft/4jcraft/build/subprojects/simdutf
+Creating /home/runner/work/4jcraft/4jcraft/build/subprojects/simdutf/simdutf_c.h
+Processing amalgamation_demo.cpp
+Creating /home/runner/work/4jcraft/4jcraft/build/subprojects/simdutf/amalgamation_demo.cpp
+Processing README.md
+Creating /home/runner/work/4jcraft/4jcraft/build/subprojects/simdutf/README.md
+Processing amalgamation_demo.c
+Creating /home/runner/work/4jcraft/4jcraft/build/subprojects/simdutf/amalgamation_demo.c
+Done with all files generation.
+Files have been written to directory: /home/runner/work/4jcraft/4jcraft/build/subprojects/simdutf
+[4/185] Compiling C++ object subprojects/4jlibs/builddef/lib4J_Profile.a.p/meson-generated_4J_Profile-unity0.cpp.o
+[5/185] Compiling C++ object subprojects/4jlibs/builddef/lib4J_Input.a.p/meson-generated_4J_Input-unity0.cpp.o
+[6/185] Compiling C++ object subprojects/4jlibs/builddef/lib4J_Render.a.p/meson-generated_4J_Render-unity0.cpp.o
+FAILED: [code=1] subprojects/4jlibs/builddef/lib4J_Render.a.p/meson-generated_4J_Render-unity0.cpp.o 
+em++ -Isubprojects/4jlibs/builddef/lib4J_Render.a.p -Isubprojects/4jlibs/builddef -I../subprojects/4jlibs/builddef -I../subprojects/4jlibs/4J.Render -I../subprojects/4jlibs/4J.Common -fdiagnostics-color=always -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST -D_FILE_OFFSET_BITS=64 -std=c++23 -O3 -O2 -std=c++17 -fPIC -pthread -fpermissive -Wshift-count-overflow -pipe -DSPLIT_SAVES -D_LARGE_WORLDS -D_EXTENDED_ACHIEVEMENTS -D_DEBUG_MENUS_ENABLED -D_DEBUG -DDEBUG -include /home/runner/work/4jcraft/4jcraft/subprojects/4jlibs/builddef/../4J.Render/stdafx.h -MD -MQ subprojects/4jlibs/builddef/lib4J_Render.a.p/meson-generated_4J_Render-unity0.cpp.o -MF subprojects/4jlibs/builddef/lib4J_Render.a.p/meson-generated_4J_Render-unity0.cpp.o.d -o subprojects/4jlibs/builddef/lib4J_Render.a.p/meson-generated_4J_Render-unity0.cpp.o -c subprojects/4jlibs/builddef/lib4J_Render.a.p/4J_Render-unity0.cpp
+In file included from subprojects/4jlibs/builddef/lib4J_Render.a.p/4J_Render-unity0.cpp:1:
+/home/runner/work/4jcraft/4jcraft/build/../subprojects/4jlibs/builddef/../4J.Render/4J_Render.cpp:24:10: fatal error: 'glm/glm.hpp' file not found
+   24 | #include <glm/glm.hpp>
+      |          ^~~~~~~~~~~~~
+1 error generated.
+[7/185] Compiling C++ object subprojects/4jlibs/builddef/lib4J_Storage.a.p/meson-generated_4J_Storage-unity0.cpp.o
+[8/185] Compiling C++ object subprojects/simdutf/libsimdutf.a.p/meson-generated_simdutf-unity0.cpp.o
+[9/185] Compiling C++ object Minecraft.World/libMinecraft.World.a.p/meson-generated_Minecraft.World-unity0.cpp.o
+ports:INFO: retrieving port: zlib from https://github.com/madler/zlib/archive/refs/tags/v1.3.1.tar.gz
+ports:INFO: unpacking port: zlib
+cache:INFO: generating port: sysroot/lib/wasm32-emscripten/libz.a... (this will be cached in "/home/runner/work/_temp/5e162e1d-ccb3-4e5c-a359-0102eaba9c83/emsdk-main/upstream/emscripten/cache/sysroot/lib/wasm32-emscripten/libz.a" for subsequent builds)
+system_libs:INFO: compiled 15 inputs in 1.62s
+cache:INFO:  - ok
+cache:INFO: generating port: sysroot/lib/wasm32-emscripten/libSDL2-mt.a... (this will be cached in "/home/runner/work/_temp/5e162e1d-ccb3-4e5c-a359-0102eaba9c83/emsdk-main/upstream/emscripten/cache/sysroot/lib/wasm32-emscripten/libSDL2-mt.a" for subsequent builds)
+system_libs:INFO: compiled 119 inputs in 11.55s
+cache:INFO:  - ok
+ninja: build stopped: subcommand failed.
+INFO: autodetecting backend as ninja
+INFO: calculating backend command to run: /opt/hostedtoolcache/Python/3.12.13/x64/bin/ninja -C /home/runner/work/4jcraft/4jcraft/build -j 4
+Error: Process completed with exit code 1.
