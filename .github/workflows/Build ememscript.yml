@@ -103,15 +103,25 @@ jobs:
             f.write('\n'.join(lines) + '\n')
           PYEOF
 
-      # ── 7. Install GLM into emscripten's sysroot ─────────────────────────
-      # Install headers via apt, then copy them into emscripten's own sysroot
-      # so em++ finds glm/ naturally without -I/usr/include (which would pull
-      # in glibc internals and corrupt emscripten's libc++ header resolution).
-      - name: Install GLM into emscripten sysroot
+      # ── 7. Install GLM (header-only, must be visible to emcc) ────────────
+      - name: Install GLM
+        run: sudo apt-get install -y libglm-dev
+
+      # ── 7b. Patch shiggy for wasm32 ──────────────────────────────────────
+      # shiggy/src/shims.c has a _Static_assert that pthread_t is 8 bytes
+      # (assumes a 64-bit host). In wasm32, sizeof(pthread_t) == 4, so the
+      # assertion always fails. Replace the hard == 8 check with >= 4.
+      - name: Patch shiggy pthread_t assertion for wasm32
         run: |
-          sudo apt-get install -y libglm-dev
-          EMSDK_SYSROOT=$(em-config CACHE)/sysroot/include
-          cp -r /usr/include/glm "$EMSDK_SYSROOT/"
+          SHIMS=subprojects/shiggy/src/shims.c
+          if [ -f "$SHIMS" ]; then
+            sed -i \
+              's/_Static_assert(sizeof(pthread_t) == 8, "pthread_t must be 8 bytes")/_Static_assert(sizeof(pthread_t) >= 4, "pthread_t must be at least 4 bytes")/' \
+              "$SHIMS"
+            echo "Patched $SHIMS"
+          else
+            echo "WARNING: $SHIMS not found — skipping patch"
+          fi
 
       # ── 8. Configure (meson setup) ────────────────────────────────────────
       - name: Configure with Meson
