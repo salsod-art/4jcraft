@@ -1,6 +1,6 @@
 name: Build (Emscripten / WebAssembly)
 
-"on":
+on:
   push:
     branches:
       - feat/emscripten
@@ -85,8 +85,8 @@ jobs:
             "pkgconfig = 'pkg-config'",
             "",
             "[built-in options]",
-            "c_args      = ['-O2', '-I/usr/include']",
-            "cpp_args    = ['-O2', '-std=c++17', '-I/usr/include']",
+            "c_args      = ['-O2']",
+            "cpp_args    = ['-O2', '-std=c++17']",
             "c_link_args = ['-sALLOW_MEMORY_GROWTH=1', '-sINITIAL_MEMORY=67108864', '-sUSE_SDL=2', '-sUSE_WEBGL2=1', '-O2']",
             "cpp_link_args = ['-sALLOW_MEMORY_GROWTH=1', '-sINITIAL_MEMORY=67108864', '-sUSE_SDL=2', '-sUSE_WEBGL2=1', '-O2']",
             "",
@@ -103,9 +103,15 @@ jobs:
             f.write('\n'.join(lines) + '\n')
           PYEOF
 
-      # ── 7. Install GLM (header-only, must be visible to emcc) ────────────
-      - name: Install GLM
-        run: sudo apt-get install -y libglm-dev
+      # ── 7. Install GLM into emscripten's sysroot ─────────────────────────
+      # Install headers via apt, then copy them into emscripten's own sysroot
+      # so em++ finds glm/ naturally without -I/usr/include (which would pull
+      # in glibc internals and corrupt emscripten's libc++ header resolution).
+      - name: Install GLM into emscripten sysroot
+        run: |
+          sudo apt-get install -y libglm-dev
+          EMSDK_SYSROOT=$(em-config CACHE)/sysroot/include
+          cp -r /usr/include/glm "$EMSDK_SYSROOT/"
 
       # ── 8. Configure (meson setup) ────────────────────────────────────────
       - name: Configure with Meson
