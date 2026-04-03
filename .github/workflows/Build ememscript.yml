@@ -74,50 +74,32 @@ jobs:
       - name: Write Meson cross-file for Emscripten
         run: |
           cat > emscripten.ini << 'EOF'
-          [binaries]
-          c       = 'emcc'
-          cpp     = 'em++'
-          ar      = 'emar'
-          ranlib  = 'emranlib'
-          nm      = 'emnm'
-          strip   = 'emstrip'
-          pkgconfig = 'pkg-config'
+[binaries]
+c       = 'emcc'
+cpp     = 'em++'
+ar      = 'emar'
+ranlib  = 'emranlib'
+nm      = 'emnm'
+strip   = 'emstrip'
+pkgconfig = 'pkg-config'
 
-          [built-in options]
-          c_args      = ['-O2']
-          cpp_args    = ['-O2', '-std=c++17']
-          c_link_args = [
-            '-sALLOW_MEMORY_GROWTH=1',
-            '-sINITIAL_MEMORY=67108864',
-            '-sUSE_SDL=2',
-            '-sUSE_WEBGL2=1',
-            '-sLEGACY_GL_EMULATION=0',
-            '-O2'
-          ]
-          cpp_link_args = [
-            '-sALLOW_MEMORY_GROWTH=1',
-            '-sINITIAL_MEMORY=67108864',
-            '-sUSE_SDL=2',
-            '-sUSE_WEBGL2=1',
-            '-sLEGACY_GL_EMULATION=0',
-            '-O2'
-          ]
+[built-in options]
+c_args      = ['-O2']
+cpp_args    = ['-O2', '-std=c++17']
+c_link_args = ['-sALLOW_MEMORY_GROWTH=1', '-sINITIAL_MEMORY=67108864', '-sUSE_SDL=2', '-sUSE_WEBGL2=1', '-sLEGACY_GL_EMULATION=0', '-O2']
+cpp_link_args = ['-sALLOW_MEMORY_GROWTH=1', '-sINITIAL_MEMORY=67108864', '-sUSE_SDL=2', '-sUSE_WEBGL2=1', '-sLEGACY_GL_EMULATION=0', '-O2']
 
-          [properties]
-          needs_exe_wrapper = true
+[properties]
+needs_exe_wrapper = true
 
-          [host_machine]
-          system     = 'emscripten'
-          cpu_family = 'wasm32'
-          cpu        = 'wasm32'
-          endian     = 'little'
-          EOF
+[host_machine]
+system     = 'emscripten'
+cpu_family = 'wasm32'
+cpu        = 'wasm32'
+endian     = 'little'
+EOF
 
-      # ── 7. Configure (meson setup) ────────────────────────────────────────
-      #
-      #  If your branch already has a cross file, swap --cross-file to:
-      #    --cross-file scripts/emscripten.ini   (or whatever the path is)
-      #
+
       - name: Configure with Meson
         run: |
           meson setup build \
