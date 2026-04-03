@@ -1,6 +1,6 @@
 name: Build (Emscripten / WebAssembly)
 
-on:
+"on":
   push:
     branches:
       - feat/emscripten
@@ -29,16 +29,12 @@ jobs:
       - name: Init submodules (skip broken md5 entry)
         run: |
           git submodule sync
-          # Init and update every submodule that actually has a URL,
-          # ignoring the broken Minecraft.World/Emscripten/md5 entry.
           git submodule update --init --recursive \
             --jobs 4 \
             -- $(git submodule status --recursive \
                    | awk '{print $2}' \
                    | grep -v 'Minecraft.World/Emscripten/md5') \
           || true
-          # If the md5 path is just a plain directory (no submodule URL),
-          # ensure it exists so the build doesn't fail looking for it.
           mkdir -p Minecraft.World/Emscripten/md5
 
       # ── 2. Python (needed by emsdk & Meson) ──────────────────────────────
@@ -52,9 +48,6 @@ jobs:
         run: pip install meson ninja
 
       # ── 4. Install & activate Emscripten SDK ─────────────────────────────
-      # Uses the official setup-emsdk action which correctly sets EMSDK,
-      # EM_CONFIG, BINARYEN_ROOT, and PATH for all subsequent steps.
-      # It also handles caching automatically.
       - name: Set up Emscripten SDK
         uses: mymindstorm/setup-emsdk@v14
         with:
@@ -65,12 +58,19 @@ jobs:
       - name: Verify emcc
         run: emcc --version
 
-      # ── 6. Write Meson Emscripten cross-file ─────────────────────────────
-      #
-      #  If your branch already ships a cross file (e.g. scripts/emscripten.ini
-      #  or cross/wasm.txt), change --cross-file below to point at that file
-      #  instead of the one generated here.
-      #
+      # ── 6. Install GLM into emscripten's sysroot ─────────────────────────
+      # Install libglm-dev then copy glm/ into emscripten's own sysroot so
+      # em++ finds it naturally. Do NOT use -I/usr/include globally — that
+      # causes em++ to pick up glibc internals (bits/libc-header-start.h)
+      # which don't exist in emscripten's sysroot and break the build.
+      - name: Install GLM into emscripten sysroot
+        run: |
+          sudo apt-get install -y libglm-dev
+          EMSDK_SYSROOT=$(em-config CACHE)/sysroot/include
+          echo "Copying GLM into $EMSDK_SYSROOT"
+          cp -r /usr/include/glm "$EMSDK_SYSROOT/"
+
+      # ── 7. Write Meson Emscripten cross-file ─────────────────────────────
       - name: Write Meson cross-file for Emscripten
         run: |
           python3 - << 'PYEOF'
@@ -103,14 +103,10 @@ jobs:
             f.write('\n'.join(lines) + '\n')
           PYEOF
 
-      # ── 7. Install GLM (header-only, must be visible to emcc) ────────────
-      - name: Install GLM
-        run: sudo apt-get install -y libglm-dev
-
-      # ── 7b. Patch shiggy for wasm32 ──────────────────────────────────────
-      # shiggy/src/shims.c has a _Static_assert that pthread_t is 8 bytes
-      # (assumes a 64-bit host). In wasm32, sizeof(pthread_t) == 4, so the
-      # assertion always fails. Replace the hard == 8 check with >= 4.
+      # ── 8. Patch shiggy for wasm32 ───────────────────────────────────────
+      # shiggy/src/shims.c asserts sizeof(pthread_t) == 8 (assumes 64-bit).
+      # In wasm32, sizeof(pthread_t) == 4, so the assertion always fails.
+      # Relax it to >= 4 so it passes on both 32-bit and 64-bit targets.
       - name: Patch shiggy pthread_t assertion for wasm32
         run: |
           SHIMS=subprojects/shiggy/src/shims.c
@@ -123,23 +119,22 @@ jobs:
             echo "WARNING: $SHIMS not found — skipping patch"
           fi
 
-      # ── 8. Configure (meson setup) ────────────────────────────────────────
+      # ── 9. Configure (meson setup) ────────────────────────────────────────
       - name: Configure with Meson
         run: |
           meson setup build \
             --cross-file emscripten.ini \
             --buildtype release
 
-      # ── 8. Compile ────────────────────────────────────────────────────────
+      # ── 10. Compile ───────────────────────────────────────────────────────
       - name: Compile
         run: meson compile -C build -j$(nproc)
 
-      # ── 9. Upload build artefacts ────────────────────────────────────────
+      # ── 11. Upload build artefacts ────────────────────────────────────────
       - name: Upload WASM build artefacts
         uses: actions/upload-artifact@v4
         with:
           name: 4jcraft-wasm
-          # Adjust the glob below if the output lives in a different sub-folder
           path: |
             build/**/*.js
             build/**/*.wasm
