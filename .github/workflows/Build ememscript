@@ -1,1 +1,139 @@
+name: Build (Emscripten / WebAssembly)
 
+on:
+  push:
+    branches:
+      - feat/emscripten
+  pull_request:
+    branches:
+      - feat/emscripten
+  workflow_dispatch: # lets you trigger it manually from the Actions tab
+
+jobs:
+  build-wasm:
+    name: Meson + Emscripten → WASM
+    runs-on: ubuntu-24.04
+
+    steps:
+      # ── 1. Checkout ───────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive   # pull any git submodules
+
+      # ── 2. Python (needed by emsdk & Meson) ──────────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # ── 3. Install Meson & Ninja ──────────────────────────────────────────
+      - name: Install Meson and Ninja
+        run: pip install meson ninja
+
+      # ── 4. Cache emsdk to avoid re-downloading every run ─────────────────
+      - name: Cache emsdk
+        id: cache-emsdk
+        uses: actions/cache@v4
+        with:
+          path: ~/emsdk
+          key: emsdk-latest-${{ runner.os }}
+
+      # ── 5. Install / activate Emscripten SDK ─────────────────────────────
+      - name: Install Emscripten SDK
+        if: steps.cache-emsdk.outputs.cache-hit != 'true'
+        run: |
+          git clone https://github.com/emscripten-core/emsdk.git ~/emsdk
+          ~/emsdk/emsdk install latest
+          ~/emsdk/emsdk activate latest
+
+      - name: Activate Emscripten SDK (from cache)
+        run: |
+          ~/emsdk/emsdk activate latest
+          source ~/emsdk/emsdk_env.sh
+          # Persist env vars for subsequent steps
+          echo "EMSDK=$HOME/emsdk"                             >> $GITHUB_ENV
+          echo "EM_CONFIG=$HOME/.emscripten"                   >> $GITHUB_ENV
+          echo "$HOME/emsdk"                                   >> $GITHUB_PATH
+          echo "$HOME/emsdk/upstream/emscripten"               >> $GITHUB_PATH
+          echo "$HOME/emsdk/node/$(ls ~/emsdk/node)/bin"       >> $GITHUB_PATH
+
+      # ── 6. Verify toolchain ───────────────────────────────────────────────
+      - name: Verify emcc
+        run: emcc --version
+
+      # ── 7. Write Meson Emscripten cross-file ─────────────────────────────
+      #
+      #  If your branch already ships a cross file (e.g. scripts/emscripten.ini
+      #  or cross/wasm.txt), change --cross-file below to point at that file
+      #  instead of the one generated here.
+      #
+      - name: Write Meson cross-file for Emscripten
+        run: |
+          cat > emscripten.ini << 'EOF'
+          [binaries]
+          c       = 'emcc'
+          cpp     = 'em++'
+          ar      = 'emar'
+          ranlib  = 'emranlib'
+          nm      = 'emnm'
+          strip   = 'emstrip'
+          pkgconfig = 'pkg-config'
+
+          [built-in options]
+          c_args      = ['-O2']
+          cpp_args    = ['-O2', '-std=c++17']
+          c_link_args = [
+            '-sALLOW_MEMORY_GROWTH=1',
+            '-sINITIAL_MEMORY=67108864',
+            '-sUSE_SDL=2',
+            '-sUSE_WEBGL2=1',
+            '-sLEGACY_GL_EMULATION=0',
+            '-O2'
+          ]
+          cpp_link_args = [
+            '-sALLOW_MEMORY_GROWTH=1',
+            '-sINITIAL_MEMORY=67108864',
+            '-sUSE_SDL=2',
+            '-sUSE_WEBGL2=1',
+            '-sLEGACY_GL_EMULATION=0',
+            '-O2'
+          ]
+
+          [properties]
+          needs_exe_wrapper = true
+
+          [host_machine]
+          system     = 'emscripten'
+          cpu_family = 'wasm32'
+          cpu        = 'wasm32'
+          endian     = 'little'
+          EOF
+
+      # ── 8. Configure (meson setup) ────────────────────────────────────────
+      #
+      #  If your branch already has a cross file, swap --cross-file to:
+      #    --cross-file scripts/emscripten.ini   (or whatever the path is)
+      #
+      - name: Configure with Meson
+        run: |
+          meson setup build \
+            --cross-file emscripten.ini \
+            --buildtype release
+
+      # ── 9. Compile ────────────────────────────────────────────────────────
+      - name: Compile
+        run: meson compile -C build -j$(nproc)
+
+      # ── 10. Upload build artefacts ────────────────────────────────────────
+      - name: Upload WASM build artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: 4jcraft-wasm
+          # Adjust the glob below if the output lives in a different sub-folder
+          path: |
+            build/**/*.js
+            build/**/*.wasm
+            build/**/*.html
+          retention-days: 30
+          if-no-files-found: warn
