@@ -103,11 +103,11 @@ jobs:
             f.write('\n'.join(lines) + '\n')
           PYEOF
 
-      # ── 7. Configure (meson setup) ────────────────────────────────────────
-      #
-      #  If your branch already has a cross file, swap --cross-file to:
-      #    --cross-file scripts/emscripten.ini   (or whatever the path is)
-      #
+      # ── 7. Install GLM (header-only, must be visible to emcc) ────────────
+      - name: Install GLM
+        run: sudo apt-get install -y libglm-dev
+
+      # ── 8. Configure (meson setup) ────────────────────────────────────────
       - name: Configure with Meson
         run: |
           meson setup build \
